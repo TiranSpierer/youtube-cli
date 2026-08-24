@@ -30,25 +30,32 @@ def get_comments(
     video_id: str,
     sort: str = "top",
     limit: int = 50,
+    replies: bool = True,
 ) -> dict[str, Any]:
     if sort not in {"top", "new"}:
         raise ValueError("sort must be 'top' or 'new'")
     if limit < 1:
         raise ValueError("limit must be at least 1")
+    max_comments = (
+        [str(limit), str(limit), str(limit), "3", "all"]
+        if replies
+        else [str(limit), str(limit), "0", "0", "1"]
+    )
     options = {
         "skip_download": True,
         "getcomments": True,
         "extractor_args": {
             "youtube": {
                 "comment_sort": [sort],
-                "max_comments": [str(limit)],
+                "max_comments": max_comments,
             }
         },
     }
     with ydl(options) as client:
         result = client.extract_info(video_url(video_id), download=False)
     comments = [_comment(comment) for comment in (result.get("comments") or [])]
-    path = video_directory(video_id) / f"{video_id}-comments-{sort}.yml"
+    reply_suffix = "with-replies" if replies else "without-replies"
+    path = video_directory(video_id) / f"{video_id}-comments-{sort}-{reply_suffix}.yml"
     write_yaml(
         path,
         {
@@ -56,6 +63,7 @@ def get_comments(
             "sort": sort,
             "requested": limit,
             "retrieved": len(comments),
+            "replies": replies,
             "comments": comments,
         },
     )
@@ -64,5 +72,6 @@ def get_comments(
         "sort": sort,
         "requested": limit,
         "retrieved": len(comments),
+        "replies": replies,
         "path": str(path),
     }

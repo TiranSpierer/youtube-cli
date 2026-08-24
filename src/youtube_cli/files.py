@@ -6,6 +6,8 @@ from pathlib import Path
 
 import yaml
 
+from youtube_cli.format import _ReadableDumper
+
 
 def video_directory(video_id: str) -> Path:
     path = Path(tempfile.gettempdir()) / "youtube-cli" / video_id
@@ -14,19 +16,29 @@ def video_directory(video_id: str) -> Path:
 
 
 def write_text(path: Path, content: str) -> None:
-    temporary = path.with_suffix(f"{path.suffix}.tmp")
-    temporary.write_text(content, encoding="utf-8")
-    os.replace(temporary, path)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def write_yaml(path: Path, content: object) -> None:
-    temporary = path.with_suffix(f"{path.suffix}.tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump(
-            content,
-            handle,
-            allow_unicode=True,
-            sort_keys=False,
-            width=1000,
-        )
-    os.replace(temporary, path)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            yaml.dump(
+                content,
+                handle,
+                Dumper=_ReadableDumper,
+                allow_unicode=True,
+                sort_keys=False,
+                width=1000,
+            )
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)

@@ -39,6 +39,7 @@ def video_summary(entry: dict[str, Any]) -> dict[str, Any]:
         {
             "id": video_id,
             "title": entry.get("title"),
+            "unavailable": True if not entry.get("title") else None,
             "channel": entry.get("channel") or entry.get("uploader"),
             "channel_id": entry.get("channel_id"),
             "channel_url": entry.get("channel_url") or entry.get("uploader_url"),

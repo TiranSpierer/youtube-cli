@@ -4,11 +4,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import yaml
+import pytest
+from youtube_transcript_api._errors import TranscriptsDisabled
 
 from youtube_cli.core.channels import get_channel_metadata, get_channel_videos
 from youtube_cli.core.comments import get_comments
 from youtube_cli.core.playlists import get_playlist_videos
-from youtube_cli.core.transcripts import get_transcript
+from youtube_cli.core.transcripts import _fetch_transcript, get_transcript
 from youtube_cli.core.videos import get_video_metadata, search_videos
 
 VIDEO_ID = "dQw4w9WgXcQ"
@@ -96,18 +98,20 @@ def test_channel_videos(mock_ydl: MagicMock) -> None:
         }
     )
     mock_ydl.return_value = client
-    result = get_channel_videos("@test", limit=1, sort="popular")
+    result = get_channel_videos("@test", limit=1)
     assert result[0]["id"] == VIDEO_ID
     assert result[0]["channel"] == "Parent channel"
-    called_url = client.extract_info.call_args.args[0]
-    assert "sort=p" in called_url
+    assert client.extract_info.call_args.args[0] == "https://www.youtube.com/@test/videos"
 
 
 @patch("youtube_cli.core.playlists.ydl")
 def test_playlist_videos(mock_ydl: MagicMock) -> None:
-    mock_ydl.return_value = context_client({"entries": [summary_entry()]})
+    mock_ydl.return_value = context_client(
+        {"entries": [summary_entry(), {"id": "missing1234"}]}
+    )
     result = get_playlist_videos("playlist-id", limit=1)
     assert result[0]["id"] == VIDEO_ID
+    assert result[1]["unavailable"] is True
 
 
 @patch("youtube_cli.core.transcripts.video_directory")
@@ -125,7 +129,7 @@ def test_transcript_without_timestamps(
     mock_directory.return_value = tmp_path
     result = get_transcript(VIDEO_ID)
     assert result["timestamps"] is False
-    assert (tmp_path / f"{VIDEO_ID}-transcript.txt").read_text() == "Hello world\n"
+    assert (tmp_path / f"{VIDEO_ID}-transcript.txt").read_text() == "Hello\nworld\n"
 
 
 @patch("youtube_cli.core.transcripts.video_directory")
@@ -140,6 +144,26 @@ def test_transcript_with_timestamps(
     result = get_transcript(VIDEO_ID, timestamps=True)
     assert result["timestamps"] is True
     assert (tmp_path / f"{VIDEO_ID}-transcript-timestamps.txt").read_text() == "[1:05] Hello\n"
+
+
+@patch("youtube_cli.core.transcripts._fetch_transcript")
+def test_transcript_disabled_has_concise_error(mock_fetch: MagicMock) -> None:
+    mock_fetch.side_effect = TranscriptsDisabled(VIDEO_ID)
+    with pytest.raises(RuntimeError, match=f"No transcript available for {VIDEO_ID}: subtitles are disabled"):
+        get_transcript(VIDEO_ID)
+
+
+@patch("youtube_cli.core.transcripts.YouTubeTranscriptApi")
+def test_transcript_fallback_prefers_generated_original(mock_api_class: MagicMock) -> None:
+    api = mock_api_class.return_value
+    api.fetch.side_effect = RuntimeError("no English transcript")
+    translated = MagicMock(is_generated=False)
+    generated = MagicMock(is_generated=True)
+    generated.fetch.return_value = [SimpleNamespace(text="שלום", start=0.0, duration=1.0)]
+    api.list.return_value = [translated, generated]
+    assert _fetch_transcript(VIDEO_ID) == generated.fetch.return_value
+    generated.fetch.assert_called_once_with()
+    translated.fetch.assert_not_called()
 
 
 @patch("youtube_cli.core.comments.video_directory")
@@ -167,8 +191,38 @@ def test_comments_file(
     result = get_comments(VIDEO_ID)
     assert result["requested"] == 50
     assert result["retrieved"] == 1
-    saved = yaml.safe_load((tmp_path / f"{VIDEO_ID}-comments-top.yml").read_text())
+    assert result["replies"] is True
+    saved = yaml.safe_load(
+        (tmp_path / f"{VIDEO_ID}-comments-top-with-replies.yml").read_text()
+    )
     assert saved["comments"][0]["text"] == "Useful correction"
     options = mock_ydl.call_args.args[0]
     assert options["extractor_args"]["youtube"]["comment_sort"] == ["top"]
-    assert options["extractor_args"]["youtube"]["max_comments"] == ["50"]
+    assert options["extractor_args"]["youtube"]["max_comments"] == [
+        "50",
+        "50",
+        "50",
+        "3",
+        "all",
+    ]
+
+
+@patch("youtube_cli.core.comments.video_directory")
+@patch("youtube_cli.core.comments.ydl")
+def test_comments_without_replies(
+    mock_ydl: MagicMock,
+    mock_directory: MagicMock,
+    tmp_path,
+) -> None:
+    mock_directory.return_value = tmp_path
+    mock_ydl.return_value = context_client({"comments": []})
+    result = get_comments(VIDEO_ID, limit=10, replies=False)
+    assert result["path"].endswith("-comments-top-without-replies.yml")
+    options = mock_ydl.call_args.args[0]
+    assert options["extractor_args"]["youtube"]["max_comments"] == [
+        "10",
+        "10",
+        "0",
+        "0",
+        "1",
+    ]

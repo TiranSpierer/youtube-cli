@@ -27,6 +27,7 @@ youtube-cli video metadata <video-id>
 youtube-cli video transcript <video-id>
 youtube-cli video transcript <video-id> --timestamps
 youtube-cli video comments <video-id> --sort top --limit 50
+youtube-cli video comments <video-id> --no-replies
 ```
 
 Transcripts are saved as text under the OS temporary directory. Comments are saved as structured YAML. Both commands print the resulting file path.
@@ -38,8 +39,7 @@ Transcripts are saved as text under the OS temporary directory. Comments are sav
 
 ```bash
 youtube-cli channel metadata @mkbhd
-youtube-cli channel videos @mkbhd --sort date --limit 20
-youtube-cli channel videos @mkbhd --sort popular --limit 20
+youtube-cli channel videos @mkbhd --limit 20
 ```
 
 </details>

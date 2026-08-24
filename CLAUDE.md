@@ -15,7 +15,7 @@ uv run youtube-cli --help
 - `core/` contains framework-neutral YouTube operations.
 - `cli.py` defines the command hierarchy and calls the core.
 - `files.py` writes transcript and comment results atomically under the OS temporary directory.
-- `format.py` serializes terminal output as YAML or JSON.
+- `format.py` serializes terminal output as YAML.
 
 YouTube access belongs in the core and goes through `yt-dlp` or `youtube-transcript-api`.
 

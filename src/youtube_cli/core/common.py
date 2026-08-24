@@ -7,10 +7,23 @@ import yt_dlp
 
 VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
+
+class _SilentLogger:
+    def debug(self, message: str) -> None:
+        pass
+
+    def warning(self, message: str) -> None:
+        pass
+
+    def error(self, message: str) -> None:
+        pass
+
+
 BASE_OPTIONS: dict[str, Any] = {
     "quiet": True,
     "no_warnings": True,
     "noplaylist": True,
+    "logger": _SilentLogger(),
 }
 
 

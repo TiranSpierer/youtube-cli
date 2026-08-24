@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections.abc import Callable
 from typing import Any
@@ -14,6 +15,8 @@ from youtube_cli.core.videos import get_video_metadata, search_videos
 from youtube_cli.format import serialize
 
 Handler = Callable[..., Any]
+LEADING_ID = re.compile(r"^-[A-Za-z0-9_-]{10}$")
+VIDEO_ID_SENTINEL = "__YOUTUBE_LEADING_DASH_VIDEO_ID__"
 
 
 def _positive_int(value: str) -> int:
@@ -23,8 +26,27 @@ def _positive_int(value: str) -> int:
     return number
 
 
+def _error_message(error: Exception) -> str:
+    message = str(error).strip() or type(error).__name__
+    while message.startswith("ERROR:"):
+        message = message.removeprefix("ERROR:").strip()
+    return message
+
+
 def _command(parser: argparse.ArgumentParser, handler: Handler) -> None:
     parser.set_defaults(handler=handler)
+
+
+def _protect_leading_dash_video_id(argv: list[str]) -> tuple[list[str], str | None]:
+    if len(argv) < 3 or argv[0] != "video" or argv[1] not in {"metadata", "transcript", "comments"}:
+        return argv, None
+    protected = list(argv)
+    for index in range(2, len(protected)):
+        if LEADING_ID.fullmatch(protected[index]):
+            video_id = protected[index]
+            protected[index] = VIDEO_ID_SENTINEL
+            return protected, video_id
+    return protected, None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     comments.add_argument("video_id")
     comments.add_argument("--sort", choices=["top", "new"], default="top")
     comments.add_argument("--limit", type=_positive_int, default=50)
+    comments.add_argument("--replies", action=argparse.BooleanOptionalAction, default=True)
     _command(comments, get_comments)
 
     channel = resources.add_parser("channel", help="Channel operations")
@@ -64,7 +87,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     channel_videos = channel_commands.add_parser("videos", help="List channel videos")
     channel_videos.add_argument("channel")
-    channel_videos.add_argument("--sort", choices=["date", "popular"], default="date")
     channel_videos.add_argument("--limit", type=_positive_int, default=20)
     _command(channel_videos, get_channel_videos)
 
@@ -80,7 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
-    args = vars(parser.parse_args(argv))
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    protected_argv, leading_video_id = _protect_leading_dash_video_id(raw_argv)
+    args = vars(parser.parse_args(protected_argv))
+    if leading_video_id is not None and args.get("video_id") == VIDEO_ID_SENTINEL:
+        args["video_id"] = leading_video_id
     handler: Handler = args.pop("handler")
     args.pop("resource")
     args.pop("operation")
@@ -90,7 +116,7 @@ def main(argv: list[str] | None = None) -> None:
     except KeyboardInterrupt:
         raise
     except Exception as error:
-        print(f"Error: {error}", file=sys.stderr)
+        print(f"Error: {_error_message(error)}", file=sys.stderr)
         raise SystemExit(1) from error
 
 
