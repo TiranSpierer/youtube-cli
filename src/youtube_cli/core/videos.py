@@ -8,6 +8,9 @@ from .models import video_summary
 
 
 def search_videos(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    query = query.strip()
+    if not query:
+        raise ValueError("query must not be empty")
     if limit < 1:
         raise ValueError("limit must be at least 1")
     with ydl({"extract_flat": True, "playlist_items": f"1:{limit}"}) as client:

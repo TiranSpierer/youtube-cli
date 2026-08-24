@@ -35,6 +35,7 @@ def video_summary(entry: dict[str, Any]) -> dict[str, Any]:
     url = entry.get("webpage_url") or entry.get("url")
     if not isinstance(url, str) or not url.startswith("http"):
         url = f"https://www.youtube.com/watch?v={video_id}"
+    live_status = entry.get("live_status")
     return compact(
         {
             "id": video_id,
@@ -46,6 +47,7 @@ def video_summary(entry: dict[str, Any]) -> dict[str, Any]:
             "duration": format_duration(entry.get("duration")),
             "duration_seconds": entry.get("duration"),
             "views": entry.get("view_count"),
+            "live_status": live_status if live_status != "not_live" else None,
             "upload_date": entry.get("upload_date"),
             "url": url,
         }
@@ -71,6 +73,8 @@ def video_metadata(entry: dict[str, Any]) -> dict[str, Any]:
             **video_summary(entry),
             "likes": entry.get("like_count"),
             "comments": entry.get("comment_count"),
+            "language": entry.get("language"),
+            "concurrent_viewers": entry.get("concurrent_view_count"),
             "description": entry.get("description"),
             "tags": entry.get("tags"),
             "categories": entry.get("categories"),

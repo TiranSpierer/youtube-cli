@@ -9,6 +9,8 @@ from youtube_transcript_api._errors import TranscriptsDisabled
 
 from youtube_cli.core.channels import get_channel_metadata, get_channel_videos
 from youtube_cli.core.comments import get_comments
+from youtube_cli.core.common import normalize_channel
+from youtube_cli.core.models import video_summary
 from youtube_cli.core.playlists import get_playlist_videos
 from youtube_cli.core.transcripts import (
     TranscriptLanguageUnavailable,
@@ -54,12 +56,19 @@ def test_search_videos(mock_ydl: MagicMock) -> None:
     assert result[0]["duration"] == "2:05"
 
 
+def test_search_rejects_blank_query() -> None:
+    with pytest.raises(ValueError, match="query must not be empty"):
+        search_videos("  ")
+
+
 @patch("youtube_cli.core.videos.ydl")
 def test_video_metadata_keeps_full_fields(mock_ydl: MagicMock) -> None:
     entry = {
         **summary_entry(),
         "like_count": 10,
         "comment_count": 3,
+        "language": "en",
+        "concurrent_view_count": 25,
         "description": "Description",
         "tags": ["one", "two"],
         "categories": ["Education"],
@@ -74,6 +83,17 @@ def test_video_metadata_keeps_full_fields(mock_ydl: MagicMock) -> None:
     assert result["description"] == "Description"
     assert result["tags"] == ["one", "two"]
     assert result["chapters"][0]["end"] == "0:30"
+    assert result["language"] == "en"
+    assert result["concurrent_viewers"] == 25
+
+
+def test_video_summary_includes_only_meaningful_live_status() -> None:
+    normal = summary_entry()
+    normal["live_status"] = "not_live"
+    live = summary_entry()
+    live["live_status"] = "is_live"
+    assert "live_status" not in video_summary(normal)
+    assert video_summary(live)["live_status"] == "is_live"
 
 
 @patch("youtube_cli.core.channels.ydl")
@@ -114,6 +134,17 @@ def test_channel_videos(mock_ydl: MagicMock) -> None:
     assert client.extract_info.call_args.args[0] == "https://www.youtube.com/@test/videos"
 
 
+def test_channel_url_normalization_removes_content_tabs() -> None:
+    assert normalize_channel("https://www.youtube.com/@test/videos?view=0") == (
+        "https://www.youtube.com/@test"
+    )
+
+
+def test_channel_rejects_blank_value() -> None:
+    with pytest.raises(ValueError, match="channel must not be empty"):
+        normalize_channel("  ")
+
+
 @patch("youtube_cli.core.playlists.ydl")
 def test_playlist_videos(mock_ydl: MagicMock) -> None:
     mock_ydl.return_value = context_client(
@@ -122,6 +153,11 @@ def test_playlist_videos(mock_ydl: MagicMock) -> None:
     result = get_playlist_videos("playlist-id", limit=1)
     assert result[0]["id"] == VIDEO_ID
     assert result[1]["unavailable"] is True
+
+
+def test_playlist_rejects_blank_value() -> None:
+    with pytest.raises(ValueError, match="playlist must not be empty"):
+        get_playlist_videos("  ")
 
 
 @patch("youtube_cli.core.transcripts.video_directory")
@@ -158,6 +194,22 @@ def test_transcript_with_timestamps(
     result = get_transcript(VIDEO_ID, timestamps=True)
     assert result["timestamps"] is True
     assert (tmp_path / f"{VIDEO_ID}-transcript-en-timestamps.txt").read_text() == "[1:05] Hello\n"
+
+
+@patch("youtube_cli.core.transcripts.video_directory")
+@patch("youtube_cli.core.transcripts._fetch_transcript")
+def test_transcript_rejects_empty_caption_track(
+    mock_fetch: MagicMock,
+    mock_directory: MagicMock,
+    tmp_path,
+) -> None:
+    mock_fetch.return_value = FakeFetchedTranscript(
+        [SimpleNamespace(text="  ", start=0.0, duration=1.0)]
+    )
+    mock_directory.return_value = tmp_path
+    with pytest.raises(RuntimeError, match=f"Transcript is empty for {VIDEO_ID}"):
+        get_transcript(VIDEO_ID)
+    assert not list(tmp_path.iterdir())
 
 
 @patch("youtube_cli.core.transcripts._fetch_transcript")
@@ -235,7 +287,7 @@ def test_comments_file(
     assert result["retrieved"] == 1
     assert result["replies"] is True
     saved = yaml.safe_load(
-        (tmp_path / f"{VIDEO_ID}-comments-top-with-replies.yml").read_text()
+        (tmp_path / f"{VIDEO_ID}-comments-top-50-with-replies.yml").read_text()
     )
     assert saved["comments"][0]["text"] == "Useful correction"
     options = mock_ydl.call_args.args[0]
@@ -259,7 +311,7 @@ def test_comments_without_replies(
     mock_directory.return_value = tmp_path
     mock_ydl.return_value = context_client({"comments": []})
     result = get_comments(VIDEO_ID, limit=10, replies=False)
-    assert result["path"].endswith("-comments-top-without-replies.yml")
+    assert result["path"].endswith("-comments-top-10-without-replies.yml")
     options = mock_ydl.call_args.args[0]
     assert options["extractor_args"]["youtube"]["max_comments"] == [
         "10",

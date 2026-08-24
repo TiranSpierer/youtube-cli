@@ -105,6 +105,8 @@ def get_transcript(
         raise RuntimeError(f"Transcript retrieval failed for {video_id}: {type(error).__name__}.") from None
     snippets = list(transcript)
     cleaned = [" ".join(snippet.text.split()) for snippet in snippets]
+    if not any(cleaned):
+        raise RuntimeError(f"Transcript is empty for {video_id}.")
     if timestamps:
         content = "\n".join(
             f"[{format_timestamp(snippet.start)}] {text}"

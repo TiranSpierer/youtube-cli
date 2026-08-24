@@ -55,7 +55,10 @@ def get_comments(
         result = client.extract_info(video_url(video_id), download=False)
     comments = [_comment(comment) for comment in (result.get("comments") or [])]
     reply_suffix = "with-replies" if replies else "without-replies"
-    path = video_directory(video_id) / f"{video_id}-comments-{sort}-{reply_suffix}.yml"
+    path = (
+        video_directory(video_id)
+        / f"{video_id}-comments-{sort}-{limit}-{reply_suffix}.yml"
+    )
     write_yaml(
         path,
         {

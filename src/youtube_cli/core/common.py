@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import yt_dlp
 
@@ -39,8 +40,22 @@ def video_url(video_id: str) -> str:
 
 def normalize_channel(value: str) -> str:
     value = value.strip().rstrip("/")
+    if not value:
+        raise ValueError("channel must not be empty")
     if value.startswith("https://") or value.startswith("http://"):
-        return value
+        parsed = urlsplit(value)
+        parts = parsed.path.rstrip("/").split("/")
+        if parts[-1] in {
+            "about",
+            "community",
+            "featured",
+            "playlists",
+            "shorts",
+            "streams",
+            "videos",
+        }:
+            parts.pop()
+        return urlunsplit((parsed.scheme, parsed.netloc, "/".join(parts), "", ""))
     if not value.startswith("@"):
         value = f"@{value}"
     return f"https://www.youtube.com/{value}"
