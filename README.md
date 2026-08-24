@@ -56,11 +56,7 @@ youtube-cli playlist videos <playlist-url-or-id> --limit 50
 <details>
 <summary>Output</summary>
 
-Commands print compact YAML by default. Pass `--json` before the resource name for JSON:
-
-```bash
-youtube-cli --json video search "iphone 16"
-```
+Commands print compact YAML.
 
 Large results are written under:
 

@@ -30,7 +30,6 @@ def _command(parser: argparse.ArgumentParser, handler: Handler) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="youtube-cli", description="Search and read YouTube")
     parser.add_argument("--version", action="version", version=__version__)
-    parser.add_argument("--json", action="store_true", help="Output JSON instead of YAML")
     resources = parser.add_subparsers(dest="resource", required=True)
 
     video = resources.add_parser("video", help="Video operations")
@@ -83,12 +82,11 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = vars(parser.parse_args(argv))
     handler: Handler = args.pop("handler")
-    as_json = args.pop("json")
     args.pop("resource")
     args.pop("operation")
     try:
         result = handler(**args)
-        print(serialize(result, as_json=as_json))
+        print(serialize(result))
     except KeyboardInterrupt:
         raise
     except Exception as error:
