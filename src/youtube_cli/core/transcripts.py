@@ -19,27 +19,78 @@ from .common import require_video_id
 from .models import format_timestamp
 
 
-def _fetch_transcript(video_id: str) -> Any:
-    api = YouTubeTranscriptApi()
-    try:
-        return api.fetch(video_id)
-    except Exception:
-        available = list(api.list(video_id))
-        if not available:
-            raise
-        transcript = next(
-            (candidate for candidate in available if candidate.is_generated),
-            available[0],
+class TranscriptLanguageUnavailable(ValueError):
+    pass
+
+
+LANGUAGE_ALIASES = {"he": "iw", "id": "in", "yi": "ji"}
+
+
+def _language_matches(available: str, requested: str) -> bool:
+    available = LANGUAGE_ALIASES.get(available.lower(), available.lower())
+    requested = LANGUAGE_ALIASES.get(requested.lower(), requested.lower())
+    return available == requested or available.startswith(f"{requested}-")
+
+
+def _select_transcript(available: list[Any], language: str | None = None) -> Any:
+    if language is not None:
+        selected = next(
+            (
+                transcript
+                for transcript in available
+                if _language_matches(transcript.language_code, language)
+                and not transcript.is_generated
+            ),
+            None,
+        ) or next(
+            (
+                transcript
+                for transcript in available
+                if _language_matches(transcript.language_code, language)
+            ),
+            None,
         )
-        return transcript.fetch()
+        if selected is None:
+            languages = ", ".join(dict.fromkeys(t.language_code for t in available))
+            raise TranscriptLanguageUnavailable(
+                f"Transcript language '{language}' is unavailable. Available: {languages or 'none'}."
+            )
+        return selected
+
+    generated = next((transcript for transcript in available if transcript.is_generated), None)
+    if generated is None:
+        return available[0]
+    return next(
+        (
+            transcript
+            for transcript in available
+            if transcript.language_code == generated.language_code
+            and not transcript.is_generated
+        ),
+        generated,
+    )
 
 
-def get_transcript(video_id: str, timestamps: bool = False) -> dict[str, Any]:
+def _fetch_transcript(video_id: str, language: str | None = None) -> Any:
+    api = YouTubeTranscriptApi()
+    available = list(api.list(video_id))
+    if not available:
+        raise TranscriptLanguageUnavailable("No transcript languages are available.")
+    return _select_transcript(available, language).fetch()
+
+
+def get_transcript(
+    video_id: str,
+    timestamps: bool = False,
+    language: str | None = None,
+) -> dict[str, Any]:
     video_id = require_video_id(video_id)
     try:
-        transcript = _fetch_transcript(video_id)
+        transcript = _fetch_transcript(video_id, language)
+    except TranscriptLanguageUnavailable:
+        raise
     except TranscriptsDisabled:
-        raise RuntimeError(f"No transcript available for {video_id}: subtitles are disabled.") from None
+        raise RuntimeError(f"No captions or transcript available for {video_id}.") from None
     except NoTranscriptFound:
         raise RuntimeError(f"No transcript available for {video_id}.") from None
     except VideoUnavailable:
@@ -60,16 +111,18 @@ def get_transcript(video_id: str, timestamps: bool = False) -> dict[str, Any]:
             for snippet, text in zip(snippets, cleaned, strict=True)
             if text
         )
-        filename = f"{video_id}-transcript-timestamps.txt"
+        suffix = "-timestamps"
     else:
         content = "\n".join(text for text in cleaned if text)
-        filename = f"{video_id}-transcript.txt"
+        suffix = ""
     content = f"{content.strip()}\n"
+    selected_language = getattr(transcript, "language_code", "unknown")
+    filename = f"{video_id}-transcript-{selected_language}{suffix}.txt"
     path = video_directory(video_id) / filename
     write_text(path, content)
     return {
         "video_id": video_id,
-        "language": getattr(transcript, "language_code", None),
+        "language": selected_language,
         "generated": getattr(transcript, "is_generated", None),
         "timestamps": timestamps,
         "segments": len(snippets),

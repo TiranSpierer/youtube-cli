@@ -43,7 +43,15 @@ def test_transcript_timestamps(mock_transcript, capsys) -> None:
     assert mock_transcript.call_args.kwargs == {
         "video_id": "dQw4w9WgXcQ",
         "timestamps": True,
+        "language": None,
     }
+
+
+@patch("youtube_cli.cli.get_transcript")
+def test_transcript_language(mock_transcript) -> None:
+    mock_transcript.return_value = {"language": "es", "path": "/tmp/transcript.txt"}
+    main(["video", "transcript", "dQw4w9WgXcQ", "--language", "es"])
+    assert mock_transcript.call_args.kwargs["language"] == "es"
 
 
 def test_invalid_limit_exits_nonzero() -> None:

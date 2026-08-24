@@ -3,17 +3,27 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import yaml
 import pytest
+import yaml
 from youtube_transcript_api._errors import TranscriptsDisabled
 
 from youtube_cli.core.channels import get_channel_metadata, get_channel_videos
 from youtube_cli.core.comments import get_comments
 from youtube_cli.core.playlists import get_playlist_videos
-from youtube_cli.core.transcripts import _fetch_transcript, get_transcript
+from youtube_cli.core.transcripts import (
+    TranscriptLanguageUnavailable,
+    _fetch_transcript,
+    _select_transcript,
+    get_transcript,
+)
 from youtube_cli.core.videos import get_video_metadata, search_videos
 
 VIDEO_ID = "dQw4w9WgXcQ"
+
+
+class FakeFetchedTranscript(list):
+    language_code = "en"
+    is_generated = False
 
 
 def context_client(result: dict) -> MagicMock:
@@ -121,15 +131,17 @@ def test_transcript_without_timestamps(
     mock_directory: MagicMock,
     tmp_path,
 ) -> None:
-    transcript = [
-        SimpleNamespace(text="Hello", start=0.0, duration=1.0),
-        SimpleNamespace(text="world", start=2.0, duration=1.0),
-    ]
+    transcript = FakeFetchedTranscript(
+        [
+            SimpleNamespace(text="Hello", start=0.0, duration=1.0),
+            SimpleNamespace(text="world", start=2.0, duration=1.0),
+        ]
+    )
     mock_fetch.return_value = transcript
     mock_directory.return_value = tmp_path
     result = get_transcript(VIDEO_ID)
     assert result["timestamps"] is False
-    assert (tmp_path / f"{VIDEO_ID}-transcript.txt").read_text() == "Hello\nworld\n"
+    assert (tmp_path / f"{VIDEO_ID}-transcript-en.txt").read_text() == "Hello\nworld\n"
 
 
 @patch("youtube_cli.core.transcripts.video_directory")
@@ -139,31 +151,61 @@ def test_transcript_with_timestamps(
     mock_directory: MagicMock,
     tmp_path,
 ) -> None:
-    mock_fetch.return_value = [SimpleNamespace(text="Hello", start=65.0, duration=1.0)]
+    mock_fetch.return_value = FakeFetchedTranscript(
+        [SimpleNamespace(text="Hello", start=65.0, duration=1.0)]
+    )
     mock_directory.return_value = tmp_path
     result = get_transcript(VIDEO_ID, timestamps=True)
     assert result["timestamps"] is True
-    assert (tmp_path / f"{VIDEO_ID}-transcript-timestamps.txt").read_text() == "[1:05] Hello\n"
+    assert (tmp_path / f"{VIDEO_ID}-transcript-en-timestamps.txt").read_text() == "[1:05] Hello\n"
 
 
 @patch("youtube_cli.core.transcripts._fetch_transcript")
 def test_transcript_disabled_has_concise_error(mock_fetch: MagicMock) -> None:
     mock_fetch.side_effect = TranscriptsDisabled(VIDEO_ID)
-    with pytest.raises(RuntimeError, match=f"No transcript available for {VIDEO_ID}: subtitles are disabled"):
+    with pytest.raises(RuntimeError, match=f"No captions or transcript available for {VIDEO_ID}"):
         get_transcript(VIDEO_ID)
 
 
 @patch("youtube_cli.core.transcripts.YouTubeTranscriptApi")
 def test_transcript_fallback_prefers_generated_original(mock_api_class: MagicMock) -> None:
     api = mock_api_class.return_value
-    api.fetch.side_effect = RuntimeError("no English transcript")
-    translated = MagicMock(is_generated=False)
-    generated = MagicMock(is_generated=True)
+    translated = MagicMock(is_generated=False, language_code="vi")
+    generated = MagicMock(is_generated=True, language_code="en")
     generated.fetch.return_value = [SimpleNamespace(text="שלום", start=0.0, duration=1.0)]
     api.list.return_value = [translated, generated]
     assert _fetch_transcript(VIDEO_ID) == generated.fetch.return_value
     generated.fetch.assert_called_once_with()
     translated.fetch.assert_not_called()
+
+
+def test_transcript_prefers_manual_caption_in_original_language() -> None:
+    vietnamese = SimpleNamespace(is_generated=False, language_code="vi")
+    manual_english = SimpleNamespace(is_generated=False, language_code="en")
+    generated_english = SimpleNamespace(is_generated=True, language_code="en")
+    assert _select_transcript([vietnamese, manual_english, generated_english]) is manual_english
+
+
+def test_transcript_explicit_language_prefers_manual() -> None:
+    manual_spanish = SimpleNamespace(is_generated=False, language_code="es")
+    generated_spanish = SimpleNamespace(is_generated=True, language_code="es")
+    assert _select_transcript([generated_spanish, manual_spanish], "es") is manual_spanish
+
+
+def test_transcript_language_accepts_modern_hebrew_code() -> None:
+    generated_hebrew = SimpleNamespace(is_generated=True, language_code="iw")
+    assert _select_transcript([generated_hebrew], "he") is generated_hebrew
+
+
+def test_transcript_language_accepts_regional_variant() -> None:
+    generated_spanish = SimpleNamespace(is_generated=True, language_code="es-419")
+    assert _select_transcript([generated_spanish], "es") is generated_spanish
+
+
+def test_transcript_explicit_language_reports_available_languages() -> None:
+    english = SimpleNamespace(is_generated=True, language_code="en")
+    with pytest.raises(TranscriptLanguageUnavailable, match="Available: en"):
+        _select_transcript([english], "es")
 
 
 @patch("youtube_cli.core.comments.video_directory")

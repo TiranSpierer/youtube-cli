@@ -69,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     transcript = video_commands.add_parser("transcript", help="Save a video transcript")
     transcript.add_argument("video_id")
     transcript.add_argument("--timestamps", action="store_true")
+    transcript.add_argument("--language", help="Select an available caption language code")
     _command(transcript, get_transcript)
 
     comments = video_commands.add_parser("comments", help="Save video comments")
