@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.32.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -9,16 +9,16 @@ description = "CLI for searching and reading YouTube"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "PyYAML>=6.0.2",
+  "PyYAML>=6.0.3",
   "yt-dlp>=2026.8.19",
-  "youtube-transcript-api>=1.2.3",
+  "youtube-transcript-api>=1.2.4",
 ]
 
 [project.scripts]
 youtube-cli = "youtube_cli.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8.3.5"]
+dev = ["pytest>=9.1.1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/youtube_cli"]
