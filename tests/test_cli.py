@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from youtube_cli.cli import main
+from youtube_cli.cli import build_parser, main
 from youtube_cli.format import serialize
 
 
@@ -43,7 +43,6 @@ def test_transcript_timestamps(mock_transcript, capsys) -> None:
     assert mock_transcript.call_args.kwargs == {
         "video_id": "dQw4w9WgXcQ",
         "timestamps": True,
-        "language": None,
     }
 
 
@@ -70,13 +69,43 @@ def test_leading_dash_video_id(mock_metadata, capsys) -> None:
 
 @patch("youtube_cli.cli.get_video_metadata")
 def test_yt_dlp_error_is_printed_once(mock_metadata, capsys) -> None:
-    mock_metadata.side_effect = RuntimeError("ERROR: [youtube] unavailable")
+    mock_metadata.side_effect = RuntimeError(
+        "ERROR: [youtube] dQw4w9WgXcQ: Video unavailable "
+        "(caused by <HTTPError 404: Not Found>)"
+    )
     with pytest.raises(SystemExit) as error:
         main(["video", "metadata", "dQw4w9WgXcQ"])
     assert error.value.code == 1
-    assert capsys.readouterr().err == "Error: [youtube] unavailable\n"
+    assert capsys.readouterr().err == "Error: Video unavailable\n"
 
 
 def test_multiline_yaml_uses_literal_block() -> None:
     assert serialize({"description": "first\nsecond"}) == "description: |-\n  first\n  second"
     assert serialize({"description": "first  \nsecond"}) == "description: |-\n  first\n  second"
+
+
+def test_leaf_help_documents_defaults(capsys) -> None:
+    parser = build_parser()
+    with pytest.raises(SystemExit) as error:
+        parser.parse_args(["video", "comments", "--help"])
+    assert error.value.code == 0
+    output = capsys.readouterr().out
+    assert "Maximum comments (default: 50)" in output
+    assert "Include replies (default: True)" in output
+
+
+def test_transcript_help_describes_original_language_default(capsys) -> None:
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["video", "transcript", "--help"])
+    assert "defaults to the original language" in " ".join(
+        capsys.readouterr().out.split()
+    )
+
+
+def test_extra_arguments_show_leaf_usage(capsys) -> None:
+    with pytest.raises(SystemExit) as error:
+        main(["video", "metadata", "dQw4w9WgXcQ", "extra"])
+    assert error.value.code == 2
+    stderr = capsys.readouterr().err
+    assert stderr.startswith("usage: youtube-cli video metadata")

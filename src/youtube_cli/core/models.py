@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from datetime import date
 from typing import Any
 
 
@@ -30,6 +32,15 @@ def format_timestamp(seconds: int | float) -> str:
     return format_duration(seconds) or "0:00"
 
 
+def format_date(value: str | None) -> date | str | None:
+    if value is None or not re.fullmatch(r"\d{8}", value):
+        return value
+    try:
+        return date(int(value[:4]), int(value[4:6]), int(value[6:]))
+    except ValueError:
+        return value
+
+
 def video_summary(entry: dict[str, Any]) -> dict[str, Any]:
     video_id = entry.get("id") or ""
     url = entry.get("webpage_url") or entry.get("url")
@@ -48,7 +59,7 @@ def video_summary(entry: dict[str, Any]) -> dict[str, Any]:
             "duration_seconds": entry.get("duration"),
             "views": entry.get("view_count"),
             "live_status": live_status if live_status != "not_live" else None,
-            "upload_date": entry.get("upload_date"),
+            "upload_date": format_date(entry.get("upload_date")),
             "url": url,
         }
     )

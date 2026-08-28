@@ -1,6 +1,6 @@
 # youtube-cli
 
-CLI for searching and reading YouTube. Search videos, inspect video and channel metadata, save transcripts and comments to local files, and browse channel or playlist videos.
+CLI for searching and reading YouTube. Search videos and Shorts, inspect video and channel metadata, save transcripts and comments to local files, and browse channel or playlist videos.
 
 ## Install
 
@@ -33,6 +33,8 @@ youtube-cli video comments <video-id> --sort top --limit 50
 youtube-cli video comments <video-id> --no-replies
 ```
 
+Video commands also work with Short IDs.
+
 Transcripts are saved as text under the OS temporary directory. Comments are saved as structured YAML. Both commands print the resulting file path.
 
 Transcripts default to the video's original spoken language. Use `--language` to select another available caption track.
@@ -55,6 +57,8 @@ youtube-cli channel videos @mkbhd --limit 20
 ```bash
 youtube-cli playlist videos <playlist-url-or-id> --limit 50
 ```
+
+Playlist output includes playlist metadata followed by its videos.
 
 </details>
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -54,6 +55,7 @@ def test_search_videos(mock_ydl: MagicMock) -> None:
     result = search_videos("test", limit=1)
     assert result[0]["id"] == VIDEO_ID
     assert result[0]["duration"] == "2:05"
+    assert result[0]["upload_date"] == date(2026, 8, 24)
 
 
 def test_search_rejects_blank_query() -> None:
@@ -148,11 +150,32 @@ def test_channel_rejects_blank_value() -> None:
 @patch("youtube_cli.core.playlists.ydl")
 def test_playlist_videos(mock_ydl: MagicMock) -> None:
     mock_ydl.return_value = context_client(
-        {"entries": [summary_entry(), {"id": "missing1234"}]}
+        {
+            "id": "playlist-id",
+            "title": "Test playlist",
+            "channel": "Test channel",
+            "playlist_count": 2,
+            "entries": [summary_entry(), {"id": "missing1234"}],
+        }
     )
     result = get_playlist_videos("playlist-id", limit=1)
-    assert result[0]["id"] == VIDEO_ID
-    assert result[1]["unavailable"] is True
+    assert result["id"] == "playlist-id"
+    assert result["title"] == "Test playlist"
+    assert result["video_count"] == 2
+    assert result["videos"][0]["id"] == VIDEO_ID
+    assert result["videos"][1]["unavailable"] is True
+
+
+@patch("youtube_cli.core.playlists.ydl", side_effect=RuntimeError("backend noise"))
+def test_playlist_error_is_concise(mock_ydl: MagicMock) -> None:
+    with pytest.raises(RuntimeError, match="^Playlist unavailable: missing$"):
+        get_playlist_videos("missing")
+
+
+@patch("youtube_cli.core.channels.ydl", side_effect=RuntimeError("backend noise"))
+def test_channel_error_is_concise(mock_ydl: MagicMock) -> None:
+    with pytest.raises(RuntimeError, match="^Channel unavailable: @missing$"):
+        get_channel_videos("@missing")
 
 
 def test_playlist_rejects_blank_value() -> None:
