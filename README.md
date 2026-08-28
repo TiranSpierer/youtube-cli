@@ -4,6 +4,8 @@ CLI for searching and reading YouTube. Search videos, inspect video and channel 
 
 ## Install
 
+Recommended: install [`web-platforms`](https://github.com/TiranSpierer/agent-plugins) from the agent plugin marketplace.
+
 Run directly with `uvx`:
 
 ```bash
