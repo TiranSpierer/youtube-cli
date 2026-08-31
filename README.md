@@ -4,7 +4,8 @@ CLI for searching and reading YouTube. Search videos and Shorts, inspect video a
 
 ## Install
 
-Recommended: install [`web-platforms`](https://github.com/TiranSpierer/agent-plugins) from the agent plugin marketplace.
+> [!TIP]
+> **Recommended:** Install [`web-platforms`](https://github.com/TiranSpierer/agent-plugins) from the agent plugin marketplace.
 
 Run directly with `uvx`:
 
